@@ -64,12 +64,6 @@ CPU_EntryPoint:
 	; Init random number generator
 	jsr RND_Init
 	
-	; Init sound driver
-	jsr SND_Init
-
-	; Determine system type and apply default settings
-	jsr SYS_DetectSystemType
-
 	; Cleanup registers
 	move.l #ram_start, a0     ; Move address of first byte of ram (contains zero, RAM has been cleared) to a0
 	movem.l (a0), d0-d7/a1-a6  ; Multiple move zero to all registers (except sp)
@@ -82,10 +76,16 @@ CPU_EntryPoint:
 	IF !CHECKSUM_TEST
 	jsr    PAD_ReadPadA
 	cmp.w  #(1<<pad_button_a|1<<pad_button_b|1<<pad_button_start), d0
-	bne    @NoChkSum
+	
 	ENDIF
 
 	jsr SYS_Checksum
+	
+	; Init sound driver
+	jsr SND_Init
+
+	; Determine system type and apply default settings
+	jsr SYS_DetectSystemType	
 
 	@NoChkSum:
 
