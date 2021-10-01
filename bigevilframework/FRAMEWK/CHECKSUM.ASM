@@ -18,12 +18,12 @@ Checksum_BlockDir		equ 0x00FFDE10
 
 Checksum_Msg0: dc.b "This is a checksum info screen",0
 Checksum_Msg1: dc.b "Press A for block checksum",0
-Checksum_Msg2: dc.b "B change block size:",0
-Checksum_Msg3: dc.b "L or R check direction:",0
-Checksum_Msg4: dc.b "forward",0
+Checksum_Msg2: dc.b "B change block size:    ",0
+Checksum_Msg3: dc.b "L or R check direction: ",0
+Checksum_Msg4: dc.b "forward ",0
 Checksum_Msg5: dc.b "backward",0
-Checksum_Msg6: dc.b "Bock end address:",0
-Checksum_Msg7: dc.b "Block checksum:",0
+Checksum_Msg6: dc.b "Bock end address:     ",0
+Checksum_Msg7: dc.b "Block checksum:       ",0
 Checksum_Msg8: dc.b "Press C for full ROM checksum",0
 Checksum_Msg9: dc.b "Target checksum:",0
 Checksum_Msg10: dc.b "Full checksum:",0
@@ -58,8 +58,8 @@ SYS_Checksum:
 	jsr     VDP_Init
 	; Welcome screen	
 
-	; Wait for A, C, Left or Right button
-	@WaitACLR:
+	; Wait for START, A, B, C, Left or Right button
+	@WaitSABCLR:
 	jsr    SYS_ChecksumWelcome
 	jsr    PAD_ReadPadA
     move.w (Gamepad1PrevState), d1
@@ -72,27 +72,37 @@ SYS_Checksum:
 	; Check A button
 	btst   #pad_button_a, d0
 	bne    @BlockCheck
+	; Check B button
+	jsr   SYS_ChecksumBlock_Size
 	; Check C button
 	btst   #pad_button_c, d0
 	bne    @Fullcheck
-	jmp    @WaitACLR
+	jmp    @WaitSABCLR
 
 	@BlockCheck:
 	jsr    SYS_ChecksumBlock
 	jmp    @RunGame
 	
 	@Fullcheck:
-	move.l #checksum_end, d1			; ROM End
-	lea    checksum_start, a0			; ROM Start (after header, see HEADER.ASM)
-	jsr    SYS_ChecksumCalc
-	lea    Checksum_Full, a0			; Result string address
-	jsr    TXT_ItoA_Hex_w				; d0 was calculated by SYS_ChecksumCalc
-	
 	; Load checksum from ROM header
 	move.w header_checksum_addr, d0	; Checksum
 	lea    Checksum_Target, a0			; Result string address
 	jsr    TXT_ItoA_Hex_w
-
+	
+	; Clear screen
+	jsr    VDP_ClearVRAM
+	jsr    VDP_ClearCRAM
+	jsr    VDP_ClearVSRAM
+	; Print feedback
+	jsr    SYS_FullChecksumInfo
+	
+	move.l #checksum_end, d1			; ROM End
+	lea    checksum_start, a0			; ROM Start (after header, see HEADER.ASM)
+	jsr    SYS_ChecksumCalc
+	lea    Checksum_Full, a0			; Result string address
+	jsr    TXT_ItoA_Hex_w				; d0 was calculated by SYS_ChecksumCalc	
+	
+	; Print full checksum
 	jsr    SYS_FullChecksumInfo
 
 	; Wait for START button
@@ -106,7 +116,52 @@ SYS_Checksum:
 	jsr     VDP_Init
 	
 	rts
+	
+	
+SYS_ChecksumBlock_DirSelect:
+	; d0 (w) Gamepad1 current state
+	; d1 (w) Gamepad1PrevState
+	
+	btst    #pad_button_left, d1	; Was button Left pressed?
+	bne     @SkipLeftSwitch
+	btst    #pad_button_left, d0	; Is button Left pressed now?
+	beq     @SkipLeftSwitch
+	eori.b  #0x1, Checksum_BlockDir	; Switch 1 (forward) to 0 or 0 to 1
+	jmp     @SkipRightSwitch
+	@SkipLeftSwitch:
+	
+	btst    #pad_button_right, d1	; Was button Right pressed?
+	bne     @SkipRightSwitch
+	btst    #pad_button_right, d0
+	beq     @SkipRightSwitch
+	eori.b  #0x1, Checksum_BlockDir
+	@SkipRightSwitch:
+	
+	rts
+	
 
+SYS_ChecksumBlock_Size:
+	; d0 (w) Gamepad1 current state
+	; d1 (w) Gamepad1PrevState
+	
+	btst    #pad_button_b, d1			; Was button B pressed?
+	bne     @ExitChangeBlockSize
+	btst    #pad_button_b, d0			; Is button B pressed now?
+	beq     @ExitChangeBlockSize
+	move.l  Checksum_BlockSize, d3
+	cmpi.l  #0x80000, d3				; MAX block size is 512 KB
+	blt     @IncreaseBlockSize
+	move.l  #0x10, Checksum_BlockSize	; Set min size block - 16 byte
+	jmp     @ExitChangeBlockSize
+	@IncreaseBlockSize:
+	lsl.l    #0x1, d3
+	move.l  d3, Checksum_BlockSize
+	
+	@ExitChangeBlockSize:
+	
+	rts
+	
+	
 SYS_ChecksumBlock:
 	
 	move.l Checksum_BlockSize, d3
@@ -132,7 +187,7 @@ SYS_ChecksumBlock:
 	lea    Checksum_1KAddrStr, a0	; Result string address
 	jsr    TXT_ItoA_Hex_l
 
-	@WaitASLR:
+	@WaitSLRBA:
 	jsr    SYS_1KChecksumInfo
 	jsr    PAD_ReadPadA
 	; Check A button
@@ -143,11 +198,13 @@ SYS_ChecksumBlock:
 	bne    @ExitBlockCheck
 	; Check Left and Right buttons
 	jsr     SYS_ChecksumBlock_DirSelect
+	; Check B button
+	jsr   SYS_ChecksumBlock_Size
 	; Check A button
 	btst   #pad_button_a, d1		; Was button A pressed?
-	bne    @WaitASLR
+	bne    @WaitSLRBA
 	btst   #pad_button_a, d0		; Is button A pressed now?
-	beq    @WaitASLR
+	beq    @WaitSLRBA
 	
 	; Calc next block addresses
 	move.l Checksum_BlockSize, d3
@@ -186,22 +243,22 @@ SYS_ChecksumCalc:
 	
 	rts
 	
-SYS_ChecksumBlock_DirSelect:
+SYS_ChecksumCommonMsg:
+	; Output first and last message strings
 	
-	btst    #pad_button_left, d1	; Was button Left pressed?
-	bne     @SkipLeftSwitch
-	btst    #pad_button_left, d0	; Is button Left pressed now?
-	beq     @SkipLeftSwitch
-	eori.b  #0x1, Checksum_BlockDir	; Switch 1 (forward) to 0 or 0 to 1
-	jmp     @SkipRightSwitch
-	@SkipLeftSwitch:
+	move.l  #((Checksum_MsgPosX<<16)|(Checksum_MsgPosY+0)), d1	; XY coord
+	lea     Checksum_Msg0, a0			; String address
+	move.w  #Checksum_FontTileId, d0	; Font VDP address
+	move.b  #0x0, d2					; Palette index
+	move.b  #0x0, d3					; Plane A
+	jsr     TXT_DrawPlane
 	
-	btst    #pad_button_right, d1	; Was button Right pressed?
-	bne     @SkipRightSwitch
-	btst    #pad_button_right, d0
-	beq     @SkipRightSwitch
-	eori.b  #0x1, Checksum_BlockDir
-	@SkipRightSwitch:
+	move.l  #((Checksum_MsgPosX<<16)|(Checksum_MsgPosY+9)), d1	; XY coord
+	lea     Checksum_Msg11, a0			; String address
+	move.w  #Checksum_FontTileId, d0	; Font VDP address
+	move.b  #0x0, d2					; Palette index
+	move.b  #0x0, d3					; Plane A
+	jsr     TXT_DrawPlane
 	
 	rts
 	
@@ -220,12 +277,7 @@ SYS_ChecksumWelcome:
 	;==============================================================
 	
 	; Draw welcome messages
-	move.l  #((Checksum_MsgPosX<<16)|(Checksum_MsgPosY+0)), d1	; XY coord
-	lea     Checksum_Msg0, a0			; String address
-	move.w  #Checksum_FontTileId, d0	; Font VDP address
-	move.b  #0x0, d2					; Palette index
-	move.b  #0x0, d3					; Plane A
-	jsr     TXT_DrawPlane
+	jsr     SYS_ChecksumCommonMsg
 	
 	move.l  #((Checksum_MsgPosX<<16)|(Checksum_MsgPosY+2)), d1	; XY coord
 	lea     Checksum_Msg1, a0			; String address
@@ -257,13 +309,6 @@ SYS_ChecksumWelcome:
 	move.b  #0x0, d3					; Plane A
 	jsr     TXT_DrawPlane
 	
-	move.l  #((Checksum_MsgPosX<<16)|(Checksum_MsgPosY+9)), d1	; XY coord
-	lea     Checksum_Msg11, a0			; String address
-	move.w  #Checksum_FontTileId, d0	; Font VDP address
-	move.b  #0x0, d2					; Palette index
-	move.b  #0x0, d3					; Plane A
-	jsr     TXT_DrawPlane
-	
 	rts
 
 SYS_1KChecksumInfo:
@@ -281,7 +326,9 @@ SYS_1KChecksumInfo:
 
 	;==============================================================
 	
-	; Draw 1K checksum info
+	; Draw checksum info creen
+	jsr     SYS_ChecksumCommonMsg
+	
 	move.l  #((Checksum_MsgPosX<<16)|(Checksum_MsgPosY+2)), d1	; XY coord
 	lea     Checksum_Msg1, a0			; String address
 	move.w  #Checksum_FontTileId, d0	; Font VDP address
@@ -380,6 +427,8 @@ SYS_FullChecksumInfo:
 	;==============================================================
 	
 	; Draw checksum info
+	jsr     SYS_ChecksumCommonMsg
+	
 	move.l  #((Checksum_MsgPosX<<16)|(Checksum_MsgPosY+4)), d1	; XY coord
 	lea     Checksum_Msg9, a0			; String address
 	move.w  #Checksum_FontTileId, d0	; Font VDP address
