@@ -28,6 +28,7 @@ Checksum_Msg8: dc.b "Press C for full ROM checksum",0
 Checksum_Msg9: dc.b "Target checksum:",0
 Checksum_Msg10: dc.b "Full checksum:",0
 Checksum_Msg11: dc.b "You may press START to run game",0
+Checksum_Msg12: dc.b "Wait..",0
 
 	even
 
@@ -56,7 +57,17 @@ SYS_Checksum:
 	
 	; Re-initialise VDP
 	jsr     VDP_Init
-	; Welcome screen	
+	
+	; Load font
+	lea     Checksum_Font, a0
+	move.l  #Checksum_FontAddr, d0
+	move.l  #Checksum_FontSize, d1
+	jsr     TXT_LoadFont
+
+	; Load palette
+	lea     Checksum_Palette, a0
+	move.l  #0x0, d0
+	jsr     PAL_Load
 
 	; Wait for START, A, B, C, Left or Right button
 	@WaitSABCLR:
@@ -86,13 +97,28 @@ SYS_Checksum:
 	@Fullcheck:
 	; Load checksum from ROM header
 	move.w header_checksum_addr, d0	; Checksum
-	lea    Checksum_Target, a0			; Result string address
+	lea    Checksum_Target, a0		; Result string address
 	jsr    TXT_ItoA_Hex_w
 	
+	; Wait message in Full checksum info
+	lea    Checksum_Full, a0       ; Target string
+	lea    Checksum_Msg12, a1      ; Source string
+	jsr    TXT_StrCpy
+	
 	; Clear screen
-	jsr    VDP_ClearVRAM
-	jsr    VDP_ClearCRAM
-	jsr    VDP_ClearVSRAM
+	jsr     VDP_Init
+	
+	; Load font
+	lea     Checksum_Font, a0
+	move.l  #Checksum_FontAddr, d0
+	move.l  #Checksum_FontSize, d1
+	jsr     TXT_LoadFont
+
+	; Load palette
+	lea     Checksum_Palette, a0
+	move.l  #0x0, d0
+	jsr     PAL_Load
+	
 	; Print feedback
 	jsr    SYS_FullChecksumInfo
 	
@@ -263,16 +289,6 @@ SYS_ChecksumCommonMsg:
 	rts
 	
 SYS_ChecksumWelcome:
-	; Load font
-	lea     Checksum_Font, a0
-	move.l  #Checksum_FontAddr, d0
-	move.l  #Checksum_FontSize, d1
-	jsr     TXT_LoadFont
-
-	; Load palette
-	lea     Checksum_Palette, a0
-	move.l  #0x0, d0
-	jsr     PAL_Load
 	
 	;==============================================================
 	
@@ -312,17 +328,6 @@ SYS_ChecksumWelcome:
 	rts
 
 SYS_1KChecksumInfo:
-	
-	; Load font
-	lea     Checksum_Font, a0
-	move.l  #Checksum_FontAddr, d0
-	move.l  #Checksum_FontSize, d1
-	jsr     TXT_LoadFont
-
-	; Load palette
-	lea     Checksum_Palette, a0
-	move.l  #0x0, d0
-	jsr     PAL_Load
 
 	;==============================================================
 	
@@ -412,17 +417,6 @@ SYS_BlockChecksumParams:
 	rts
 	
 SYS_FullChecksumInfo:
-	
-	; Load font
-	lea     Checksum_Font, a0
-	move.l  #Checksum_FontAddr, d0
-	move.l  #Checksum_FontSize, d1
-	jsr     TXT_LoadFont
-
-	; Load palette
-	lea     Checksum_Palette, a0
-	move.l  #0x0, d0
-	jsr     PAL_Load
 
 	;==============================================================
 	
